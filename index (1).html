@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Cave — Wine Stock</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5f0e8;
+    --surface: #ede7d9;
+    --surface2: #e4ddd0;
+    --ink: #2c2825;
+    --ink-dim: #7a7067;
+    --accent: #4a3f35;
+    --red: #8b2535;
+    --border: rgba(44,40,37,0.15);
+    --border-soft: rgba(44,40,37,0.08);
+    --serif: 'Cormorant Garamond', Georgia, serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: var(--serif); background: var(--bg); color: var(--ink); min-height: 100vh; }
+  .header { padding: 32px 20px 20px; border-bottom: 1px solid var(--border); }
+  .header-eyebrow { font-size: 11px; letter-spacing: 0.3em; color: var(--ink-dim); text-transform: uppercase; font-weight: 300; font-style: italic; margin-bottom: 6px; }
+  .header-box { font-size: 34px; color: var(--ink); font-weight: 600; }
+  .header-meta { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .chip { font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; padding: 4px 12px; border-radius: 2px; background: var(--surface2); border: 1px solid var(--border); color: var(--ink-dim); }
+  #loading { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 20px; gap: 16px; }
+  .loader { width: 36px; height: 36px; border: 1.5px solid var(--border); border-top-color: var(--ink); border-radius: 50%; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loader-text { font-size: 12px; letter-spacing: 0.25em; color: var(--ink-dim); text-transform: uppercase; font-weight: 300; font-style: italic; }
+  #error-view { display: none; padding: 40px 20px; text-align: center; }
+  .error-msg { font-size: 14px; color: var(--red); margin-top: 8px; font-style: italic; }
+  #wine-list { display: none; padding-bottom: 60px; }
+  .list-header { padding: 14px 20px 12px; font-size: 11px; letter-spacing: 0.25em; text-transform: uppercase; color: var(--ink-dim); border-bottom: 1px solid var(--border-soft); font-weight: 300; font-style: italic; }
+  .list-header span { color: var(--ink); font-style: normal; }
+  .wine-card { padding: 20px; border-bottom: 1px solid var(--border-soft); position: relative; animation: fadeUp 0.3s ease both; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  .wine-card::before { content: ''; position: absolute; left: 0; top: 20px; bottom: 20px; width: 3px; border-radius: 0 2px 2px 0; background: var(--border); }
+  .wine-card.rouge::before { background: #8b2535; }
+  .wine-card.blanc::before { background: #b89a3a; }
+  .wine-card.rose::before  { background: #c4748a; }
+  .wine-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+  .wine-name { font-size: 18px; font-style: italic; line-height: 1.25; flex: 1; }
+  .wine-stock { text-align: right; flex-shrink: 0; }
+  .wine-stock-num { font-size: 28px; font-weight: 300; line-height: 1; }
+  .wine-stock-label { font-size: 10px; letter-spacing: 0.15em; color: var(--ink-dim); text-transform: uppercase; }
+  .wine-tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 16px; }
+  .tag { font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase; padding: 3px 8px; border-radius: 2px; background: var(--surface2); border: 1px solid var(--border-soft); color: var(--ink-dim); }
+  .btn-movement { display: block; width: 100%; padding: 14px; border: 1px solid var(--border); border-radius: 2px; background: var(--accent); color: #f5f0e8; font-family: var(--serif); font-size: 14px; letter-spacing: 0.15em; text-transform: uppercase; text-align: center; text-decoration: none; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="header-eyebrow">Cave à Vin — Stock Management</div>
+  <div id="header-box" class="header-box">—</div>
+  <div id="header-meta" class="header-meta" style="display:none"></div>
+</div>
+<div id="loading"><div class="loader"></div><div class="loader-text">Loading…</div></div>
+<div id="error-view"><div style="font-size:28px">⚠️</div><div class="error-msg" id="error-msg"></div></div>
+<div id="wine-list">
+  <div class="list-header"><span id="wine-count">—</span> wines in this box</div>
+  <div id="wines-container"></div>
+</div>
+
+<script>
+const API_KEY  = 'patEtTcX2qcm8PA8I.81aafdbfeffd1769afdd39f2e99d39c56ecd20655ce263d606a1000a9b169295';
+const BASE_ID  = 'appGTKbGOZeTIeZRx';
+const FORM_URL = 'https://airtable.com/appGTKbGOZeTIeZRx/pag9aUXruQYcS7yUt/form';
+
+async function api(table, qs) {
+  const url = `https://api.airtable.com/v0/${BASE_ID}/${encodeURIComponent(table)}${qs ? '?' + qs : ''}`;
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${API_KEY}` } });
+  if (!r.ok) throw new Error(`API error ${r.status}`);
+  return r.json();
+}
+
+function cc(c='') {
+  c = c.toLowerCase();
+  if (c.includes('rouge')) return 'rouge';
+  if (c.includes('blanc')) return 'blanc';
+  if (c.includes('ros')) return 'rose';
+  return '';
+}
+
+function show(id) {
+  ['loading','error-view','wine-list'].forEach(i =>
+    document.getElementById(i).style.display = i===id ? 'block' : 'none'
+  );
+}
+
+async function loadBox(boxId) {
+  document.getElementById('header-box').textContent = boxId;
+  try {
+    // Get box record
+    const boxRes = await api('Boxes', `filterByFormula=${encodeURIComponent('{Box ID}="'+boxId+'"')}&maxRecords=1`);
+    if (!boxRes.records?.length) throw new Error(`Box "${boxId}" not found`);
+    
+    const box = boxRes.records[0];
+    const boxRecId = box.id;
+    const location = box.fields['Location'] || '';
+    const tax = box.fields['TAX'] || '';
+    
+    const meta = document.getElementById('header-meta');
+    meta.style.display = 'flex';
+    if (location) meta.innerHTML += `<span class="chip">${location}</span>`;
+    if (tax) meta.innerHTML += `<span class="chip">${tax}</span>`;
+
+    // Get wine record IDs from the box record
+    const wineIds = box.fields['Wines'] || [];
+    if (!wineIds.length) throw new Error(`No wines linked to box ${boxId}`);
+    
+    // Fetch each wine directly by record ID
+    const winePromises = wineIds.map(id => 
+      api('Wines', `filterByFormula=${encodeURIComponent('RECORD_ID()="' + id + '"')}&maxRecords=1`)
+    );
+    const wineResults = await Promise.all(winePromises);
+    const wines = wineResults.flatMap(r => r.records || []);
+    
+    if (!wines.length) throw new Error(`Could not load wines for ${boxId}`);
+
+    show('wine-list');
+    document.getElementById('wine-count').textContent = wines.length;
+    const container = document.getElementById('wines-container');
+    
+    wines.forEach(w => {
+      const f = w.fields;
+      const name = f['Wine Name'] || f['Name'] || '—';
+      const colour = f['Colour'] || '';
+      const inStock = f['In Stock'] ?? '—';
+      const tags = [f['Vintage'], f['Domaine'], f['Appellation'], colour].filter(Boolean)
+        .map(t => `<span class="tag">${t}</span>`).join('');
+      
+      const p = new URLSearchParams();
+      p.set('prefill_Box', boxRecId);
+      p.set('prefill_Wine', w.id);
+      
+      const card = document.createElement('div');
+      card.className = `wine-card ${cc(colour)}`;
+      card.innerHTML = `
+        <div class="wine-top">
+          <div class="wine-name">${name}</div>
+          <div class="wine-stock"><div class="wine-stock-num">${inStock}</div><div class="wine-stock-label">in stock</div></div>
+        </div>
+        <div class="wine-tags">${tags}</div>
+        <a class="btn-movement" href="${FORM_URL}?${p.toString()}" target="_blank">+ New Movement</a>`;
+      container.appendChild(card);
+    });
+
+  } catch(e) {
+    console.error(e);
+    show('error-view');
+    document.getElementById('error-msg').textContent = e.message;
+  }
+}
+
+const boxId = new URLSearchParams(window.location.search).get('box');
+if (boxId) loadBox(boxId);
+else { show('error-view'); document.getElementById('error-msg').textContent = 'No box ID in URL'; }
+</script>
+</body>
+</html>
